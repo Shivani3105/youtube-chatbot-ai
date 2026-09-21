@@ -18,6 +18,9 @@ if not os.environ.get("GEMINI_API_KEY"):
 
 app = FastAPI(title="YouTube Chatbot API")
 
+# Dynamically get current directory path (works on Windows & Linux Cloud servers like Render)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Global in-memory cache for current active video state
 current_video_state: Dict[str, Any] = {
     "video_id": None,
@@ -93,12 +96,12 @@ async def get_status():
         "language": current_video_state["language"]
     }
 
-# Mount static files directory
-app.mount("/static", StaticFiles(directory="F:/resume/youtubeChatbot"), name="static")
+# Mount static files directory using dynamic BASE_DIR
+app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
 
 @app.get("/")
 async def root():
-    return FileResponse("F:/resume/youtubeChatbot/index.html")
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
