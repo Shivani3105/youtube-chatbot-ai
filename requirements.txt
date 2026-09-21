@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+youtube-transcript-api
+langchain-text-splitters
+langchain-google-genai
+langchain-community
+faiss-cpu
+python-dotenv
+requests
+pydantic

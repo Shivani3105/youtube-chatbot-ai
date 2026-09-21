@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TubeTalk AI — Interactive YouTube Transcript Chatbot</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="logo-icon">
+                    <i class="fa-brands fa-youtube"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>TubeTalk <span class="gradient-text">AI</span></h1>
+                    <p>Conversational Intelligence for YouTube Videos</p>
+                </div>
+            </div>
+            
+            <div class="header-actions">
+                <div class="badge model-badge">
+                    <i class="fa-solid fa-bolt"></i> Gemini 3.6 Flash
+                </div>
+                <div class="badge status-badge" id="server-status">
+                    <span class="status-dot online"></span> API Server Ready
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <!-- Left Sidebar / Video Input Panel -->
+            <aside class="video-panel">
+                <div class="card panel-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-link"></i> Video Source</h2>
+                        <span class="step-indicator">Step 1</span>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="video-url-input">YouTube Video URL or ID</label>
+                        <div class="url-input-wrapper">
+                            <i class="fa-solid fa-magnifying-glass input-icon"></i>
+                            <input 
+                                type="text" 
+                                id="video-url-input" 
+                                placeholder="https://www.youtube.com/watch?v=..." 
+                                value="https://www.youtube.com/watch?v=qpIdoaaPa6U"
+                            />
+                            <button id="clear-url-btn" title="Clear input"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+
+                    <button id="load-video-btn" class="btn btn-primary">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Analyze & Fetch Transcript</span>
+                    </button>
+
+                    <!-- Alert message container -->
+                    <div id="video-alert" class="alert-box hidden"></div>
+
+                    <!-- Video Preview Container -->
+                    <div id="video-preview-wrapper" class="video-preview-container">
+                        <div class="player-placeholder" id="player-placeholder">
+                            <i class="fa-brands fa-youtube placeholder-icon"></i>
+                            <p>Enter a YouTube URL above to load the video and index its transcript.</p>
+                        </div>
+                        <iframe id="youtube-iframe" class="youtube-player hidden" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+                    </div>
+
+                    <!-- Video Stats Metadata -->
+                    <div id="video-stats-card" class="video-stats-card hidden">
+                        <h3><i class="fa-solid fa-chart-pie"></i> Indexed Knowledge Stats</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Video ID</span>
+                                <span class="stat-value" id="stat-video-id">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Text Chunks</span>
+                                <span class="stat-value" id="stat-chunks">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Vector Store</span>
+                                <span class="stat-value highlight">FAISS Index</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Language</span>
+                                <span class="stat-value" id="stat-lang">-</span>
+                            </div>
+                        </div>
+
+                        <div class="transcript-snippet-box">
+                            <label><i class="fa-solid fa-quote-left"></i> Transcript Snippet</label>
+                            <p id="transcript-snippet-text">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Main Area / Chat Panel -->
+            <section class="chat-panel">
+                <div class="card chat-card">
+                    <div class="chat-header">
+                        <div class="chat-header-title">
+                            <h2><i class="fa-solid fa-comments"></i> Transcript Assistant</h2>
+                            <p id="chat-subtitle">Load a video on the left to start asking questions</p>
+                        </div>
+                        <button id="clear-chat-btn" class="btn-icon" title="Clear Chat History">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+
+                    <!-- Quick Action Chips -->
+                    <div class="quick-chips-wrapper">
+                        <span class="chips-label">Quick Prompts:</span>
+                        <div class="chips-container">
+                            <button class="chip" data-prompt="Summarize this video in 3 key bullet points.">
+                                <i class="fa-solid fa-list-check"></i> Summarize Video
+                            </button>
+                            <button class="chip" data-prompt="What are the main key takeaways from this video?">
+                                <i class="fa-solid fa-lightbulb"></i> Main Takeaways
+                            </button>
+                            <button class="chip" data-prompt="Explain the core topic discussed in detail.">
+                                <i class="fa-solid fa-book-open"></i> Core Topic
+                            </button>
+                            <button class="chip" data-prompt="What actionable advice or code is mentioned?">
+                                <i class="fa-solid fa-code"></i> Actionable Advice
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Chat Messages Stream -->
+                    <div id="chat-stream" class="chat-stream">
+                        <!-- Default Welcome Card -->
+                        <div class="welcome-card">
+                            <div class="welcome-icon">
+                                <i class="fa-solid fa-robot"></i>
+                            </div>
+                            <h3>Welcome to TubeTalk AI!</h3>
+                            <p>I can read YouTube transcripts, organize them into FAISS vector embeddings, and answer any questions grounded in the video's content.</p>
+                            
+                            <div class="welcome-steps">
+                                <div class="welcome-step">
+                                    <span class="step-num">1</span>
+                                    <span>Paste any YouTube video link in the sidebar</span>
+                                </div>
+                                <div class="welcome-step">
+                                    <span class="step-num">2</span>
+                                    <span>Click <strong>Analyze & Fetch Transcript</strong></span>
+                                </div>
+                                <div class="welcome-step">
+                                    <span class="step-num">3</span>
+                                    <span>Ask anything about the video content!</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chat Input Bar -->
+                    <div class="chat-input-area">
+                        <div class="chat-input-container">
+                            <textarea 
+                                id="chat-textarea" 
+                                placeholder="Ask a question about the video transcript..." 
+                                rows="1"
+                                disabled
+                            ></textarea>
+                            <button id="send-msg-btn" class="btn-send" disabled>
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                        <div class="input-footer-note">
+                            <span><i class="fa-solid fa-keyboard"></i> Press <strong>Enter</strong> to send • <strong>Shift+Enter</strong> for line break</span>
+                            <span class="grounded-tag"><i class="fa-solid fa-shield-halved"></i> Strictly RAG Grounded</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

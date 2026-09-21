@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+aiml-2
+AIML2_HTML
