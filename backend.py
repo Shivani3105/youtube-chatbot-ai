@@ -3,6 +3,7 @@ import re
 from dotenv import load_dotenv
 
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import WebshareProxyConfig
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
@@ -13,8 +14,12 @@ from langchain_core.output_parsers import StrOutputParser
 # Load environment variables from .env
 load_dotenv()
 
-# Extract API Key
+# Extract API Key securely from environment variables
 api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+
+if not api_key:
+    raise ValueError("GEMINI_API_KEY environment variable is not set. Please set it in .env file or server environment.")
+
 os.environ["GEMINI_API_KEY"] = api_key
 os.environ["GOOGLE_API_KEY"] = api_key
 
@@ -36,14 +41,28 @@ def format_docs(docs):
 
 
 def fetch_transcript(video_id: str):
-    """Fetch transcript supporting multi-language captions."""
+    """Fetch transcript supporting multi-language captions and optional Webshare proxy."""
     try:
-        ytt = YouTubeTranscriptApi()
+        proxy_url = os.getenv("WEBSHARE_PROXY")
+        if proxy_url:
+            match = re.search(r"http://([^:]+):([^@]+)@", proxy_url)
+            if match:
+                user, pwd = match.group(1), match.group(2)
+                proxy_config = WebshareProxyConfig(user, pwd)
+                ytt = YouTubeTranscriptApi(proxy_config=proxy_config)
+            else:
+                ytt = YouTubeTranscriptApi()
+        else:
+            ytt = YouTubeTranscriptApi()
+            
         fetched = ytt.fetch(video_id, languages=['en', 'hi', 'es', 'fr', 'de'])
         text = " ".join(chunk.text for chunk in fetched)
         return text, "auto"
     except Exception as e:
-        raise ValueError(f"Could not fetch transcript: {str(e)}")
+        err_str = str(e)
+        if "429" in err_str or "blocking" in err_str.lower() or "ip" in err_str.lower():
+            raise ValueError("YouTube rate-limited cloud requests for this video. Please test another video or test locally on localhost.")
+        raise ValueError(f"Could not fetch transcript: {err_str}")
 
 
 def build_rag_chain(video_url_or_id: str):
