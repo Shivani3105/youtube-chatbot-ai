@@ -1,9 +1,9 @@
 import os
 import re
+import requests
 from dotenv import load_dotenv
 
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api.proxies import WebshareProxyConfig
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
@@ -14,14 +14,15 @@ from langchain_core.output_parsers import StrOutputParser
 # Load environment variables from .env
 load_dotenv()
 
-# Extract API Key securely from environment variables
-api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+# Extract API Keys securely from environment variables
+gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+youtube_api_key = os.getenv("YOUTUBE_API_KEY") or gemini_key
 
-if not api_key:
+if not gemini_key:
     raise ValueError("GEMINI_API_KEY environment variable is not set. Please set it in .env file or server environment.")
 
-os.environ["GEMINI_API_KEY"] = api_key
-os.environ["GOOGLE_API_KEY"] = api_key
+os.environ["GEMINI_API_KEY"] = gemini_key
+os.environ["GOOGLE_API_KEY"] = gemini_key
 
 
 def extract_video_id(url_or_id: str) -> str:
@@ -40,29 +41,46 @@ def format_docs(docs):
     return "\n\n".join(d.page_content for d in docs)
 
 
-def fetch_transcript(video_id: str):
-    """Fetch transcript supporting multi-language captions and optional Webshare proxy."""
+def fetch_official_youtube_api(video_id: str, api_key: str):
+    """
+    Official Google YouTube Data API v3 fallback.
+    Fetches official video metadata, title, and detailed description.
+    """
     try:
-        proxy_url = os.getenv("WEBSHARE_PROXY")
-        if proxy_url:
-            match = re.search(r"http://([^:]+):([^@]+)@", proxy_url)
-            if match:
-                user, pwd = match.group(1), match.group(2)
-                proxy_config = WebshareProxyConfig(user, pwd)
-                ytt = YouTubeTranscriptApi(proxy_config=proxy_config)
-            else:
-                ytt = YouTubeTranscriptApi()
-        else:
-            ytt = YouTubeTranscriptApi()
-            
+        url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={api_key}"
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if "items" in data and len(data["items"]) > 0:
+                snippet = data["items"][0]["snippet"]
+                title = snippet.get("title", "")
+                desc = snippet.get("description", "")
+                text = f"Video Title: {title}\n\nVideo Description:\n{desc}"
+                if text.strip():
+                    return text, "official_api"
+    except Exception:
+        pass
+    return None, None
+
+
+def fetch_transcript(video_id: str):
+    """Fetch transcript with multi-language fallback & official YouTube Data API fallback."""
+    # 1. Try standard YouTubeTranscriptApi
+    try:
+        ytt = YouTubeTranscriptApi()
         fetched = ytt.fetch(video_id, languages=['en', 'hi', 'es', 'fr', 'de'])
         text = " ".join(chunk.text for chunk in fetched)
-        return text, "auto"
-    except Exception as e:
-        err_str = str(e)
-        if "429" in err_str or "blocking" in err_str.lower() or "ip" in err_str.lower():
-            raise ValueError("YouTube rate-limited cloud requests for this video. Please test another video or test locally on localhost.")
-        raise ValueError(f"Could not fetch transcript: {err_str}")
+        if text.strip():
+            return text, "transcript"
+    except Exception:
+        pass
+
+    # 2. Try Official Google YouTube Data API v3 Fallback
+    official_text, official_lang = fetch_official_youtube_api(video_id, youtube_api_key)
+    if official_text:
+        return official_text, official_lang
+
+    raise ValueError("Could not retrieve transcript or metadata for this video.")
 
 
 def build_rag_chain(video_url_or_id: str):
@@ -81,12 +99,12 @@ def build_rag_chain(video_url_or_id: str):
     chunks = splitter.create_documents([transcript_text])
 
     # 2. Vector Store & Embeddings
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2", google_api_key=api_key)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2", google_api_key=gemini_key)
     vector_store = FAISS.from_documents(chunks, embeddings)
     retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
 
     # 3. Prompt & LLM
-    llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0.2, google_api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0.2, google_api_key=gemini_key)
     prompt = PromptTemplate(
         template="""You are a helpful YouTube assistant. Answer only from the provided context.
 
